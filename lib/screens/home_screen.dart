@@ -143,7 +143,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   PreferredSizeWidget _selectionBar(FeedStore feed) => AppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
-        flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.barGrad)),
+        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppColors.barGrad)),
         leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Cancel selection', onPressed: () => setState(_selected.clear)),
         title: Text('${_selected.length} selected'),
         actions: [
@@ -153,6 +153,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       );
 
   PreferredSizeWidget _mainBar(Session session) => AppBar(
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppColors.barGrad)),
         title: const Text('Photoshare', style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
           PopupMenuButton<String>(
@@ -178,7 +181,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ],
           ),
         ],
-        bottom: TabBar(controller: _tabs, tabs: const [Tab(text: 'Me'), Tab(text: 'Circle')]),
+        bottom: TabBar(
+          controller: _tabs,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          indicatorColor: Colors.white,
+          dividerColor: Colors.transparent,
+          tabs: const [Tab(text: 'Me'), Tab(text: 'Circle')],
+        ),
       );
 }
 

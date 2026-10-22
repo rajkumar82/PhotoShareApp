@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 
-/// Palette of the PhotoShare web app: pink -> violet accent on a soft lilac background.
+/// The house palette (see ../shared/THEME.md): a light-violet -> deep-violet gradient for bars, tabs and primary buttons on a
+/// soft lilac background, with pink only as a small accent (badges, dots). Follows the system light/dark setting.
 class AppColors {
   const AppColors._({required this.bg, required this.card, required this.text, required this.muted, required this.line, required this.placeholder});
 
   static const Color accent = Color(0xFFFF7AB8);
   static const Color violet = Color(0xFF7040E0);
   static const Color violetLight = Color(0xFF9A6BFF);
-  static const LinearGradient grad = LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [accent, Color(0xFF8A5CF0)]);
-  static const LinearGradient barGrad = LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [violetLight, violet]);
+  static const LinearGradient grad = LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [violetLight, violet]);
+  static const LinearGradient barGrad = grad;
 
   final Color bg, card, text, muted, line, placeholder;
 
@@ -28,6 +29,8 @@ ThemeData buildTheme(Brightness brightness) {
         .copyWith(primary: AppColors.violet, secondary: AppColors.accent, surface: c.card, onSurface: c.text),
     scaffoldBackgroundColor: c.bg,
     appBarTheme: AppBarTheme(backgroundColor: c.bg, foregroundColor: c.text, elevation: 0, scrolledUnderElevation: 0),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(backgroundColor: AppColors.violet, foregroundColor: Colors.white),
+    tabBarTheme: TabBarThemeData(labelColor: AppColors.violet, unselectedLabelColor: c.muted, indicatorColor: AppColors.violet),
   );
 }
 
