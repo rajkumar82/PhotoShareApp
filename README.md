@@ -39,6 +39,20 @@ Nothing from that client goes into the code; it just has to exist. The server al
     flutter test
     flutter build apk --release      # build/app/outputs/flutter-apk/app-release.apk
 
+## Releases
+
+APKs on GitHub Releases. Build one APK per processor (~18 MB each; a single fat APK is ~50 MB). The 64-bit ARM one,
+which nearly every phone needs, must be named exactly `photoshare.apk` so
+`https://github.com/rajkumar82/PhotoShareApp/releases/latest/download/photoshare.apk` always resolves to it:
+
+    flutter build apk --release --split-per-abi
+    cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/photoshare.apk
+    cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk build/app/outputs/flutter-apk/photoshare-armv7.apk
+    gh release create vX.Y.Z build/app/outputs/flutter-apk/photoshare.apk build/app/outputs/flutter-apk/photoshare-armv7.apk \
+      -R rajkumar82/PhotoShareApp --title "PhotoShare vX.Y.Z" --notes "..."
+
+Tag to match `version:` in `pubspec.yaml`.
+
 ## Launcher icon
 
 Made from the web app's icons (`assets/icon/`): `dart run flutter_launcher_icons`.
