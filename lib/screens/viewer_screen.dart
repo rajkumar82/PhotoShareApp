@@ -1,5 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:photo_view/photo_view.dart';
+import 'package:photo_view/photo_view_gallery.dart';
 
 import '../models/post.dart';
 import '../services/actions.dart';
@@ -7,8 +9,9 @@ import '../services/api.dart';
 import '../util.dart';
 import '../widgets/photo_image.dart';
 
-/// Fullscreen photos, one per screen; swipe up/down to move. The thumbnail (already cached from the grid) shows
-/// straight away while the full photo downloads, and the next few photos are fetched ahead of time.
+/// Fullscreen photos, one per screen; swipe up/down to move, pinch or double-tap to zoom (and drag to look around while zoomed,
+/// then the swipe pages again at normal size). The thumbnail (already cached from the grid) shows straight away while the full
+/// photo downloads, and the next few photos are fetched ahead of time.
 class ViewerScreen extends StatefulWidget {
   const ViewerScreen({super.key, required this.posts, required this.index, required this.api});
   final List<Post> posts;
@@ -24,11 +27,15 @@ class _ViewerScreenState extends State<ViewerScreen> {
   late final PageController _pages = PageController(initialPage: widget.index);
   late int _current = widget.index;
   bool _busy = false;
+  final _ready = <int>{}; // photos whose full-size version is on screen-ready, so the thumbnail behind can go
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _prefetch(_current));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _watch(_current);
+      _prefetch(_current);
+    });
   }
 
   @override
@@ -37,9 +44,23 @@ class _ViewerScreenState extends State<ViewerScreen> {
     super.dispose();
   }
 
+  CachedNetworkImageProvider _full(int i) => CachedNetworkImageProvider(widget.posts[i].photoUrl, headers: widget.api.headers, cacheKey: widget.posts[i].photoUrl);
+
+  // note when a photo's full-size version has arrived (at once if it is already cached)
+  void _watch(int i) {
+    if (_ready.contains(i)) return;
+    final stream = _full(i).resolve(createLocalImageConfiguration(context));
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener((_, _) {
+      stream.removeListener(listener);
+      if (mounted) setState(() => _ready.add(i));
+    }, onError: (_, _) => stream.removeListener(listener));
+    stream.addListener(listener);
+  }
+
   void _prefetch(int i) {
     for (var j = i + 1; j <= i + _ahead && j < widget.posts.length; j++) {
-      precacheImage(CachedNetworkImageProvider(widget.posts[j].photoUrl, headers: widget.api.headers, cacheKey: widget.posts[j].photoUrl), context);
+      precacheImage(_full(j), context);
     }
   }
 
@@ -102,15 +123,26 @@ class _ViewerScreenState extends State<ViewerScreen> {
         ],
       ),
       body: Stack(children: [
-        PageView.builder(
-          controller: _pages,
+        // the grid's thumbnail is already on disk, so something sharp-ish is on screen instantly; it goes once the full photo is ready
+        if (!_ready.contains(_current)) Positioned.fill(child: PhotoImage(url: post.thumbUrl, headers: widget.api.headers, fit: BoxFit.contain, fadeIn: false)),
+        PhotoViewGallery.builder(
+          pageController: _pages,
           scrollDirection: Axis.vertical,
           itemCount: widget.posts.length,
+          backgroundDecoration: const BoxDecoration(color: Colors.transparent),
+          loadingBuilder: (_, _) => const SizedBox.shrink(),
           onPageChanged: (i) {
             setState(() => _current = i);
+            _watch(i);
             _prefetch(i);
           },
-          itemBuilder: (_, i) => _Slide(post: widget.posts[i], headers: widget.api.headers),
+          builder: (_, i) => PhotoViewGalleryPageOptions(
+            imageProvider: _full(i),
+            initialScale: PhotoViewComputedScale.contained,
+            minScale: PhotoViewComputedScale.contained,
+            maxScale: PhotoViewComputedScale.contained * 5,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          ),
         ),
         if (post.caption.isNotEmpty)
           Positioned(
@@ -127,28 +159,5 @@ class _ViewerScreenState extends State<ViewerScreen> {
           ),
       ]),
     );
-  }
-}
-
-class _Slide extends StatelessWidget {
-  const _Slide({required this.post, required this.headers});
-  final Post post;
-  final Map<String, String> headers;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(fit: StackFit.expand, children: [
-      // the grid's thumbnail is already on disk, so something sharp-ish is on screen instantly
-      PhotoImage(url: post.thumbUrl, headers: headers, fit: BoxFit.contain, fadeIn: false),
-      CachedNetworkImage(
-        imageUrl: post.photoUrl,
-        httpHeaders: headers,
-        cacheKey: post.photoUrl,
-        fit: BoxFit.contain,
-        fadeInDuration: const Duration(milliseconds: 200),
-        placeholder: (_, _) => const SizedBox.shrink(),
-        errorWidget: (_, _, _) => const SizedBox.shrink(),
-      ),
-    ]);
   }
 }

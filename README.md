@@ -15,8 +15,14 @@ accounts and photos; the phone just talks to the JSON API with a bearer token in
   the share sheet with an invitation to try PhotoShare.
 - **Post**: camera button, or the gallery button for several photos at once.
 
-Not here yet: captions/comments editing, find/follow people, and the reason this app exists, auto-sync of chosen
-camera folders and "free up space".
+- **Pinch / double-tap zoom** in the viewer.
+- **Library tab** (v1.2): every backed-up photo by month, kept at full quality and private until you select it and tap the globe
+  icon to post it to your feed (tap again to take it off).
+- **Back up photos** (menu): tick camera folders, then "Back up now", or switch on automatic backup (every ~6 hours in the
+  background, Wi-Fi only / charging only options). Photos are matched by SHA-256, so re-running never duplicates, and a photo is only
+  remembered as done after the server confirms it. Photos only (no videos yet). Needs the library endpoints deployed on the server.
+
+Not here yet: captions/comments editing, find/follow people, and "free up space" (deleting backed-up photos from the phone).
 
 ## Setup: Google sign-in on Android
 

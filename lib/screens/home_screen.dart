@@ -8,10 +8,13 @@ import '../models/post.dart';
 import '../services/actions.dart';
 import '../services/api.dart';
 import '../state/feed_store.dart';
+import '../state/library_store.dart';
 import '../state/session.dart';
 import '../theme.dart';
 import '../util.dart';
 import '../widgets/photo_image.dart';
+import 'backup_screen.dart';
+import 'library_tab.dart';
 import 'viewer_screen.dart';
 
 /// "Me" (my photos) and "Circle" (people I follow) as grids grouped by date. Long-press a photo to start selecting,
@@ -24,7 +27,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 2, vsync: this)..addListener(_onTab);
+  late final TabController _tabs = TabController(length: 3, vsync: this)..addListener(_onTab);
   final _picker = ImagePicker();
   final _selected = <String>{};
   bool _busy = false;
@@ -41,7 +44,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   void _toggle(Post p) => setState(() => _selected.contains(p.id) ? _selected.remove(p.id) : _selected.add(p.id));
 
-  List<Post> _selectedPosts(FeedStore feed) => [for (final p in feed.posts) if (_selected.contains(p.id)) p];
+  List<Post> _selectedPosts(FeedStore feed) {
+    final seen = <String>{};
+    return [for (final p in [...feed.posts, ...context.read<LibraryStore>().loaded]) if (_selected.contains(p.id) && seen.add(p.id)) p];
+  }
+
+  void _openBackup(FeedStore feed) {
+    final library = context.read<LibraryStore>();
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => BackupScreen(api: feed.api, onDone: library.refresh)));
+  }
+
+  // library photos go on the feed (followers see them) or come off it; all-published selections are taken off
+  Future<void> _publish(FeedStore feed) async {
+    final library = context.read<LibraryStore>();
+    final posts = _selectedPosts(feed);
+    final on = posts.any((p) => !p.published);
+    setState(_selected.clear);
+    await _run(() async {
+      final n = await library.publish(posts, on: on);
+      await feed.load();
+      _say(on ? (n == 1 ? 'Posted to your feed.' : 'Posted $n photos to your feed.') : (n == 1 ? 'Taken off your feed.' : 'Took $n photos off your feed.'));
+    });
+  }
 
   void _say(String message) {
     ScaffoldMessenger.of(context)
@@ -104,7 +128,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         if (!didPop) setState(_selected.clear);
       },
       child: Scaffold(
-        appBar: selecting ? _selectionBar(feed) : _mainBar(session),
+        appBar: selecting ? _selectionBar(feed) : _mainBar(session, feed),
         body: Column(
           children: [
             if (_busy || feed.uploadStatus != null) const LinearProgressIndicator(minHeight: 3),
@@ -114,6 +138,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 children: [
                   _PhotoGrid(feed: feed, posts: feed.mine, selected: _selected, onToggle: _toggle, empty: 'Nothing here yet. Tap the camera button to share your first photo.'),
                   _PhotoGrid(feed: feed, posts: feed.circle, selected: _selected, onToggle: _toggle, empty: 'Nothing from your circle yet. Follow people on the PhotoShare website and their photos will show up here.'),
+                  LibraryTab(library: context.watch<LibraryStore>(), selected: _selected, onToggle: _toggle, onOpenBackup: () => _openBackup(feed)),
                 ],
               ),
             ),
@@ -147,12 +172,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Cancel selection', onPressed: () => setState(_selected.clear)),
         title: Text('${_selected.length} selected'),
         actions: [
+          if (_tabs.index == 2) IconButton(icon: const Icon(Icons.public), tooltip: 'Post to feed (or take off)', onPressed: () => _publish(feed)),
           IconButton(icon: const Icon(Icons.download_outlined), tooltip: 'Save to your phone', onPressed: () => _download(feed)),
           IconButton(icon: const Icon(Icons.share_outlined), tooltip: 'Share as a slideshow', onPressed: () => _share(feed)),
         ],
       );
 
-  PreferredSizeWidget _mainBar(Session session) => AppBar(
+  PreferredSizeWidget _mainBar(Session session, FeedStore feed) => AppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
         flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppColors.barGrad)),
@@ -160,6 +186,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         actions: [
           PopupMenuButton<String>(
             onSelected: (v) {
+              if (v == 'backup') _openBackup(feed);
               if (v == 'out') session.signOut();
             },
             itemBuilder: (_) => [
@@ -177,6 +204,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ]),
               ),
               const PopupMenuDivider(),
+              const PopupMenuItem(value: 'backup', child: ListTile(leading: Icon(Icons.cloud_upload_outlined), title: Text('Back up photos'), contentPadding: EdgeInsets.zero)),
               const PopupMenuItem(value: 'out', child: ListTile(leading: Icon(Icons.logout), title: Text('Sign out'), contentPadding: EdgeInsets.zero)),
             ],
           ),
@@ -187,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           unselectedLabelColor: Colors.white70,
           indicatorColor: Colors.white,
           dividerColor: Colors.transparent,
-          tabs: const [Tab(text: 'Me'), Tab(text: 'Circle')],
+          tabs: const [Tab(text: 'Me'), Tab(text: 'Circle'), Tab(text: 'Library')],
         ),
       );
 }

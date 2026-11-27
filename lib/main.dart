@@ -3,11 +3,15 @@ import 'package:provider/provider.dart';
 
 import 'screens/home_screen.dart';
 import 'screens/sign_in_screen.dart';
+import 'services/background.dart';
 import 'state/feed_store.dart';
+import 'state/library_store.dart';
 import 'state/session.dart';
 import 'theme.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await BackgroundSync.init();
   runApp(const PhotoShareApp());
 }
 
@@ -42,7 +46,10 @@ class _Root extends StatelessWidget {
       case AuthState.signedOut:
         return const SignInScreen();
       case AuthState.signedIn:
-        return ChangeNotifierProvider(create: (_) => FeedStore(session.api)..load(), child: const HomeScreen());
+        return MultiProvider(providers: [
+          ChangeNotifierProvider(create: (_) => FeedStore(session.api)..load()),
+          ChangeNotifierProvider(create: (_) => LibraryStore(session.api, ownerName: session.me?.name ?? 'Me', ownerPhoto: session.me?.photo)..load()),
+        ], child: const HomeScreen());
     }
   }
 }

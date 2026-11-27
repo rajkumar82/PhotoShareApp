@@ -77,6 +77,49 @@ class Api {
     _body(res);
   }
 
+  // ---- library (backups, kept apart from the feed) ----
+
+  Future<List<({String month, int count})>> libraryMonths() async {
+    final res = await _send(() => _http.get(Uri.parse('$baseUrl/api/library/months'), headers: headers));
+    return [for (final m in (_body(res) as Map)['months'] as List) (month: m['month'] as String, count: m['count'] as int)];
+  }
+
+  Future<List<Post>> libraryMonth(String month, {required String ownerName, String? ownerPhoto}) async {
+    final res = await _send(() => _http.get(Uri.parse('$baseUrl/api/library?month=$month'), headers: headers));
+    return [
+      for (final j in (_body(res) as Map)['photos'] as List) Post.fromLibrary(j as Map<String, dynamic>, ownerName: ownerName, ownerPhoto: ownerPhoto)
+    ];
+  }
+
+  /// Which of these file hashes (SHA-256, hex) the server already holds.
+  Future<Set<String>> libraryStored(List<String> hashes) async {
+    final res = await _send(() => _http.post(Uri.parse('$baseUrl/api/library/check'),
+        headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode({'hashes': hashes})));
+    return {for (final h in (_body(res) as Map)['stored'] as List) h as String};
+  }
+
+  /// Backs up the original file (never re-encoded); the server checks [hash] against what arrived.
+  Future<void> uploadToLibrary(File file, {required String hash, required DateTime takenAt, String? name}) async {
+    final fileName = name ?? file.path.split(RegExp(r'[\/]')).last;
+    final type = lookupMimeType(fileName) ?? 'application/octet-stream';
+    final res = await _send(() async {
+      final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/library'))
+        ..headers.addAll(headers)
+        ..fields['hash'] = hash
+        ..fields['takenAt'] = takenAt.toUtc().toIso8601String()
+        ..files.add(await http.MultipartFile.fromPath('photo', file.path, filename: fileName, contentType: MediaType.parse(type)));
+      return http.Response.fromStream(await _http.send(req));
+    });
+    _body(res);
+  }
+
+  /// Puts a library photo on the feed (followers see it) or takes it off again.
+  Future<void> publish(String id, {required bool on}) async {
+    final res = await _send(() => _http.post(Uri.parse('$baseUrl/api/library/$id/publish'),
+        headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode({'on': on})));
+    _body(res);
+  }
+
   /// Creates a public slideshow link for [posts] (own photos only) and returns its full URL.
   Future<String> createShare(List<Post> posts) async {
     final res = await _send(() => _http.post(Uri.parse('$baseUrl/api/shares'),
