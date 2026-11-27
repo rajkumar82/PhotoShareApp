@@ -62,6 +62,45 @@ class _BackupScreenState extends State<BackupScreen> {
     }
   }
 
+  Future<void> _freeUp() async {
+    setState(() {
+      _running = true;
+      _status = 'Checking what is safely backed up...';
+    });
+    try {
+      final plan = await SyncService.freeUpPlan(widget.api, _s, onStatus: (t) => mounted ? setState(() => _status = t) : null);
+      if (!mounted) return;
+      setState(() => _status = null);
+      if (plan.photos.isEmpty) {
+        setState(() => _status = 'Nothing to free up yet. Only photos older than 30 days that the server has confirmed are offered.');
+        return;
+      }
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text('Free up ${plan.size}?'),
+          content: Text(
+            '${plan.photos.length} photos older than 30 days are safely in your PhotoShare library (the server confirmed each exact file just now).\n\n'
+            "They will move to your phone's Trash, where Android keeps them for about 30 days. Android will ask you to confirm.",
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Not now')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Move to Trash')),
+          ],
+        ),
+      );
+      if (go != true) return;
+      final n = await SyncService.removeFromPhone(plan.photos);
+      if (mounted) setState(() => _status = n > 0 ? 'Moved $n photos to Trash.' : 'Nothing was removed.');
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _status = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _status = 'Something went wrong. Nothing was removed.');
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
@@ -109,6 +148,14 @@ class _BackupScreenState extends State<BackupScreen> {
               ),
             ),
           ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: OutlinedButton.icon(
+            onPressed: _running || _s.albumIds.isEmpty ? null : _freeUp,
+            icon: const Icon(Icons.cleaning_services_outlined),
+            label: const Text('Free up space'),
+          ),
         ),
         if (_running) const Padding(padding: EdgeInsets.fromLTRB(16, 8, 16, 0), child: LinearProgressIndicator()),
         if (_status != null || _s.lastNote != null)

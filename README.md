@@ -22,7 +22,12 @@ accounts and photos; the phone just talks to the JSON API with a bearer token in
   background, Wi-Fi only / charging only options). Photos are matched by SHA-256, so re-running never duplicates, and a photo is only
   remembered as done after the server confirms it. Photos only (no videos yet). Needs the library endpoints deployed on the server.
 
-Not here yet: captions/comments editing, find/follow people, and "free up space" (deleting backed-up photos from the phone).
+- **Free up space** (v1.3, on the Back up screen): for photos in the ticked folders that are older than 30 days and were backed up,
+  the app re-hashes each file on the phone and asks the server whether it holds that exact file *right now*; only confirmed
+  ones are offered. They move to Android's Trash (kept ~30 days, so recoverable) after Android's own confirmation. Nothing is deleted
+  on the server, and nothing is offered if the check cannot be made.
+
+Not here yet: captions/comments editing, find/follow people, adding any folder via the folder picker.
 
 ## Setup: Google sign-in on Android
 

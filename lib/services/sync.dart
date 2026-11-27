@@ -46,6 +46,13 @@ class SyncSettings {
   }
 }
 
+class FreeUpPlan {
+  FreeUpPlan(this.photos, this.bytes);
+  final List<AssetEntity> photos;
+  final int bytes;
+  String get size => bytes >= 1 << 30 ? '${(bytes / (1 << 30)).toStringAsFixed(1)} GB' : '${(bytes / (1 << 20)).round()} MB';
+}
+
 class SyncResult {
   SyncResult({this.uploaded = 0, this.alreadyThere = 0, this.failed = 0, this.note});
   int uploaded, alreadyThere, failed;
@@ -156,6 +163,71 @@ class SyncService {
     await prefs.setInt('sync_last_run', DateTime.now().millisecondsSinceEpoch);
     await prefs.setString('sync_last_note', result.summary);
     return result;
+  }
+
+  /// Photos that are safe to remove from the phone: in a chosen folder, older than [keepDays], backed up before by this app, AND
+  /// confirmed again right now by the server holding a file with the same SHA-256 as the one on the phone. Nothing is deleted here.
+  static Future<FreeUpPlan> freeUpPlan(Api api, SyncSettings settings, {int keepDays = 30, void Function(String status)? onStatus}) async {
+    final perm = await PhotoManager.requestPermissionExtend();
+    if (!perm.hasAccess) throw ApiException('Allow access to your photos first.');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final done = (prefs.getStringList(_doneKey) ?? const []).toSet();
+    final cutoff = DateTime.now().subtract(Duration(days: keepDays));
+
+    final old = <AssetEntity>[];
+    final seen = <String>{};
+    for (final album in await PhotoManager.getAssetPathList(type: RequestType.image, hasAll: false)) {
+      if (!settings.albumIds.contains(album.id)) continue;
+      final total = await album.assetCountAsync;
+      for (var page = 0; page * 200 < total; page++) {
+        for (final a in await album.getAssetListPaged(page: page, size: 200)) {
+          if (done.contains(a.id) && a.createDateTime.isBefore(cutoff) && seen.add(a.id)) old.add(a);
+        }
+      }
+    }
+
+    final safe = <AssetEntity>[];
+    var bytes = 0;
+    for (var i = 0; i < old.length; i += _batch) {
+      final chunk = old.sublist(i, i + _batch > old.length ? old.length : i + _batch);
+      onStatus?.call('Checking ${i + 1}-${i + chunk.length} of ${old.length}...');
+      final hashes = <AssetEntity, String>{};
+      final sizes = <AssetEntity, int>{};
+      for (final a in chunk) {
+        try {
+          final f = await a.originFile;
+          if (f == null) continue;
+          hashes[a] = await _sha(f);
+          sizes[a] = await f.length();
+        } catch (_) {}
+      }
+      if (hashes.isEmpty) continue;
+      final stored = await api.libraryStored(hashes.values.toSet().toList());
+      for (final a in hashes.keys) {
+        if (stored.contains(hashes[a])) {
+          safe.add(a);
+          bytes += sizes[a]!;
+        }
+      }
+    }
+    return FreeUpPlan(safe, bytes);
+  }
+
+  /// Moves the photos to Android's Trash (kept about 30 days, so a mistake can be undone); Android asks the user to confirm.
+  /// Returns how many were removed. Older Android versions have no Trash, then Android's own delete confirmation is used.
+  static Future<int> removeFromPhone(List<AssetEntity> photos) async {
+    if (photos.isEmpty) return 0;
+    List<String> removed;
+    try {
+      removed = await PhotoManager.editor.android.moveToTrash(photos);
+    } catch (_) {
+      removed = await PhotoManager.editor.deleteWithIds([for (final a in photos) a.id]);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final done = (prefs.getStringList(_doneKey) ?? const []).toSet()..removeAll(removed);
+    await prefs.setStringList(_doneKey, done.toList());
+    return removed.length;
   }
 
   static Future<String> _name(AssetEntity a, File f) async {
